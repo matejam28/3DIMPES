@@ -4,10 +4,14 @@ import matplotlib.pyplot as plt
 from corey import coreyWater, coreyOil
 from conversion import daysToSeconds,secondsToDays
 
+
+
+
 class Simulator3DIMPES:
     def __init__(self, grid_shape, grid_length):
         self.Ncells = grid_shape[0]*grid_shape[1]*grid_shape[2]
         self.length = grid_length
+        self.grid_shape = grid_shape
         self.deltaX = grid_length[0]/grid_shape[0]
         self.deltaY = grid_length[1]/grid_shape[1]
         self.deltaZ = grid_length[2]/grid_shape[2]
@@ -17,15 +21,15 @@ class Simulator3DIMPES:
         self.poro = 0.25*np.ones(grid_shape)
         self.pressure = 1.0E7 * np.ones(grid_shape)
         self.saturation = 0.2 * np.ones(grid_shape)
+        self.saturation[2,2,2] = 0.8
         self.rightPressure = 1.0E7
         #self.leftDarcyVelocity = 2.315E-6 * self.poro[0]
         self.mobilityWeighting = 1.0
-        self.deltat = daysToSeconds(1)
+        self.deltat = daysToSeconds(0.1)
         self.time = 0.0
         self.oilViscosity = 2.0E-3
         self.waterViscosity = 1.0E-3
         self.relpermWater = coreyWater(2.0, 0.4, 0.2, 0.2)
-        self.grid_shape = grid_shape
         self.relpermOil = coreyOil(2.0, 0.2, 0.2)
 
     def setPermeabilities(self,permVector):
@@ -40,6 +44,10 @@ class Simulator3DIMPES:
         self._TranY = (2.0/(1.0/self._perm[:,:-1,:]+1.0/self._perm[:,1:,:]))/self.delta[1]**2
         self._TranZ = (2.0/(1.0/self._perm[:,:,:-1]+1.0/self._perm[:,:,1:]))/self.delta[2]**2
         #self._TranRight = self._perm[-1]/self.deltaX**2
+
+    # logical index to global index
+    def l2g(self,i,j,k):
+        return i + self.grid_shape[0] * j + self.grid_shape[0] * self.grid_shape[1] * k
 
     def doTimestep(self):
         '''
@@ -56,21 +64,21 @@ class Simulator3DIMPES:
         #else:
         #    print("A <= 0")
 
-        # Determine the flow direction and assign mobility weighting
-        if np.any(result_X > 0):
-            mobility_weight_x = upW
-        else:
-            mobility_weight_x = downW
+        # # Determine the flow direction and assign mobility weighting
+        # if np.any(result_X > 0):
+        #     mobility_weight_x = upW
+        # else:
+        #     mobility_weight_x = downW
           
-        if np.any(result_Y > 0):
-            mobility_weight_y = upW
-        else:
-            mobility_weight_y = downW
+        # if np.any(result_Y > 0):
+        #     mobility_weight_y = upW
+        # else:
+        #     mobility_weight_y = downW
             
-        if np.any(result_Z > 0):
-            mobility_weight_z = upW
-        else:
-            mobility_weight_z = downW
+        # if np.any(result_Z > 0):
+        #     mobility_weight_z = upW
+        # else:
+        #     mobility_weight_z = downW
         
               
         
@@ -100,57 +108,19 @@ class Simulator3DIMPES:
         waterTrans_X = self._TranX*mobWaterW_X
         waterTrans_Y = self._TranY*mobWaterW_Y
         waterTrans_Z = self._TranZ*mobWaterW_Z
-        # Use the determined mobility weights to calculate transmissibility
-        #oilTrans_X = self._TranX * mobOilW_X * mobility_weight_x
-        #oilTrans_Y = self._TranY * mobOilW_Y * mobility_weight_y
-        #oilTrans_Z = self._TranZ * mobOilW_Z * mobility_weight_z
-
-        #waterTrans_X = self._TranX * mobWaterW_X * mobility_weight_x
-        #waterTrans_Y = self._TranY * mobWaterW_Y * mobility_weight_y
-        #waterTrans_Z = self._TranZ * mobWaterW_Z * mobility_weight_z
-        # Calculate total transmissibility for each cell
-    #oilTransRight = self._TranRight*mobOil[-1]
-        #waterTransRight = self._TranRight*mobWater[-1]
-        #totalTrans = oilTrans + waterTrans
-        #totalTransRight = oilTransRight + waterTransRight
 
         # ----------------------------
         # Solve implicit for pressure:
         #
         # We solve a linear system matrixA pressure = vectorE
         #
-        # Since the system is small and 1D we can buid a
-        # dense matrix and use explicit inversion
 
         # --- Build matrixA:
         matrixA = np.zeros((self.Ncells,self.Ncells))
-        # First row
-        #matrixA[0,0] = -totalTrans[0]
-        #matrixA[0,1] = totalTrans[0]
-        # Middle rows
-        #for ii in np.arange(1,self.Ncells-1):
-        #    for jj in np.arange(1,self_shape[1]-1):
-        #        for kk in np.arange(2,self_shape[2]-1):
-        #            matrixA[ii,ii-1,jj,kk] = totalTrans[ii-1]
-        #            matrixA[ii,ii] = -totalTrans[ii-1]-totalTrans[ii]
-        #            matrixA[ii,ii+1] = totalTrans[ii]
-        # Last row
-        #matrixA[-1,-2] = totalTrans[-1]
-        #matrixA[-1,-1] = -2*totalTransRight - totalTrans[-1]
-
-# ! NEW - Beginning !
-        # First row
-        #matrixA[0, 0] = -(oilTrans_X[0,0,0] + oilTrans_Y[0,0,0] + oilTrans_Z[0,0,0])
-        #matrixA[0, 1] = oilTrans_X[0,0,0]
-        #matrixA[0, self.grid_shape[0]] = oilTrans_Y[0,0,0]
-        #matrixA[0, self.grid_shape[0] * self.grid_shape[1]] = oilTrans_Z[0,0,0]
-        
         for i in range(self.grid_shape[0]):
             for j in range(self.grid_shape[1]):
                 for k in range(self.grid_shape[2]):
-                    index = i  + self.grid_shape[1] * j + self.grid_shape[1] * self.grid_shape[2] * k
-                    #matrixA[index, index] = -(oilTrans_X[i,j,k] + oilTrans_Y[i,j,k] + oilTrans_Z[i,j,k])
-                    
+                    index = self.l2g(i,j,k)
                     if not i - 1 < 0:
                         matrixA[index, index - 1] = oilTrans_X[i - 1,j,k] # Left
                         matrixA[index, index] -= oilTrans_X[i - 1,j,k] # Diagonal
@@ -170,52 +140,53 @@ class Simulator3DIMPES:
                         matrixA[index, index + self.grid_shape[0] * self.grid_shape[1]] = oilTrans_Z[i,j,k]
                         matrixA[index, index] -= oilTrans_Z[i,j,k]
 
-        # Last row
-        #matrixA[-1, -1] = -(oilTrans_X[-1] + oilTrans_Y[-1] + oilTrans_Z[-1])
-        #matrixA[-1, -2] = oilTrans_X[-2]
-        #matrixA[-1, -self.grid_shape[1] - 1] = oilTrans_Y[-self.grid_shape[1]]
-        #matrixA[-1, -self.grid_shape[1] * self.grid_shape[2] - 1] = oilTrans_Z[-self.grid_shape[1] * self.grid_shape[2]]
-# ! NEW - End !
+        # Boundary conditions
 
         # ------
         # --- Build vectorE:
         vectorE = np.zeros(self.Ncells) # Total number of cells
-        #vectorE[0] = -self.leftDarcyVelocity/self.deltaX
-        #vectorE[-1] = -2.0*totalTransRight*self.rightPressure
+
+
+        # Well 1
+        index=self.l2g(0,0,0)
+        matrixA[index,index]+=1
+        vectorE[index]+=1E7
+
+        index=self.l2g(2,2,2)
+        matrixA[index,index]+=1
+        vectorE[index]+=1.05E7
+
         # ------
         # --- Solve linear system:
         matrixAInv = np.linalg.inv(matrixA)
+
         pressure = np.dot(matrixAInv,vectorE)
         self.pressure = pressure.reshape(self.grid_shape)
         # --------------------------------
         # Solve explicitly for saturation:
         dtOverPoro = self.deltat/self.poro
 
-        #pressure = self.pressure
         for i in range(self.grid_shape[0]):
             for j in range(self.grid_shape[1]):
                 for k in range(self.grid_shape[2]):
-                    index = i  + self.grid_shape[1] * j + self.grid_shape[1] * self.grid_shape[2] * k
+                    index = self.l2g(i,j,k)
 
                     value = 0
                     if not i+1 > self.grid_shape[0] - 2:
-                        value += oilTrans_X[i+1,j,k]*(pressure[(i+1)  + self.grid_shape[1] * j + self.grid_shape[1] * self.grid_shape[2] * k]-pressure[index])
+                        value += oilTrans_X[i,j,k]*(pressure[(i+1)  + self.grid_shape[0] * j + self.grid_shape[0] * self.grid_shape[1] * k]-pressure[index])
                     if not i-1 < 0:
-                        value += oilTrans_X[i-1,j,k]*(pressure[(i-1)  + self.grid_shape[1] * j + self.grid_shape[1] * self.grid_shape[2] * k]-pressure[index])
+                        value += oilTrans_X[i-1,j,k]*(pressure[(i-1)  + self.grid_shape[0] * j + self.grid_shape[0] * self.grid_shape[1] * k]-pressure[index])
                     if not j+1 > self.grid_shape[1] - 2:
-                        value += oilTrans_Y[i,j+1,k]*(pressure[i  + self.grid_shape[1] * (j+1) + self.grid_shape[1] * self.grid_shape[2] * k]-pressure[index])
+                        value += oilTrans_Y[i,j,k]*(pressure[i  + self.grid_shape[0] * (j+1) + self.grid_shape[0] * self.grid_shape[1] * k]-pressure[index])
                     if not j-1 < 0:
-                        value += oilTrans_Y[i,j-1,k]*(pressure[i  + self.grid_shape[1] * (j-1) + self.grid_shape[1] * self.grid_shape[2] * k]-pressure[index])
+                        value += oilTrans_Y[i,j-1,k]*(pressure[i  + self.grid_shape[0] * (j-1) + self.grid_shape[0] * self.grid_shape[1] * k]-pressure[index])
                     if not k+1 > self.grid_shape[2] - 2:
-                        value += oilTrans_Z[i,j,k+1]*(pressure[i  + self.grid_shape[1] * j + self.grid_shape[1] * self.grid_shape[2] * (k+1)]-pressure[index])
+                        value += oilTrans_Z[i,j,k]*(pressure[i  + self.grid_shape[0] * j + self.grid_shape[0] * self.grid_shape[1] * (k+1)]-pressure[index])
                     if not k-1 < 0:
-                        value += oilTrans_Z[i,j,k-1]*(pressure[i  + self.grid_shape[1] * j + self.grid_shape[1] * self.grid_shape[2] * (k-1)]-pressure[index])
+                        value += oilTrans_Z[i,j,k-1]*(pressure[i  + self.grid_shape[0] * j + self.grid_shape[0] * self.grid_shape[1] * (k-1)]-pressure[index])
 
-                    self.saturation[i,j,k] -= dtOverPoro[i,j,k]*(value) # Substracting
+                    self.saturation[i,j,k] -= dtOverPoro[i,j,k]*(value) # Substracting since we are using oil mobilities
 
-        #self.saturation[1:-1] = self.saturation[1:-1] - dtOverPoro[1:-1]*(oilTrans[1:]*(pressure[2:]-pressure[1:-1]) +oilTrans[:-1]*(pressure[:-2]-pressure[1:-1]))
-        #self.saturation[0] = self.saturation[0] - dtOverPoro[0]*oilTrans[0]*(pressure[1]-pressure[0])
-        #self.saturation[-1] = self.saturation[-1] + dtOverPoro[-1]*(2*waterTransRight*(self.rightPressure-pressure[-1])-waterTrans[-1]*(pressure[-1]-pressure[-2]))
         maxsat = 1.0-self.relpermOil.Sorw
         minsat = self.relpermOil.Swirr
         self.saturation[ self.saturation>maxsat ] = maxsat
@@ -227,12 +198,11 @@ class Simulator3DIMPES:
         # Pick a cell and update (P = 1 bar and S = 0.2) - "well"
 
         # Production well
-        self.pressure[0,0,0] = 1 #bar
         self.saturation[0,0,0] = 0.2
 
         # Injection well
-        self.pressure[-1,-1,-1] = 2 #bar
-        self.saturation[-1,-1,-1] = 0.8
+        self.saturation[2,2,2] = 0.8
+
     
     def simulateTo(self,time):
         '''
@@ -257,30 +227,30 @@ class Simulator3DIMPES:
 
 # Simulation parameters
 grid_shape_3d = (3, 3, 3)  # Changed to 3D grid shape
-grid_length_3d = (1, 1, 1)  # Changed to 3D grid length
+grid_length_3d = (10, 10, 10)  # Changed to 3D grid length
 
 # Simulator for 3D simulation
 simulator_3d = Simulator3DIMPES(grid_shape_3d, grid_length_3d)
-simulator_refined_3d = Simulator3DIMPES(grid_shape_3d, grid_length_3d)
-simulator_refined_3d.mobilityWeighting = 0.85
+# simulator_refined_3d = Simulator3DIMPES(grid_shape_3d, grid_length_3d)
+# simulator_refined_3d.mobilityWeighting = 0.85
 
 # Lists to store simulation results
 pressures_3d = []
 saturation_3d = []
-pressures_refined_3d = []
-saturation_refined_3d = []
+# pressures_refined_3d = []
+# saturation_refined_3d = []
 
 # Define the times for running the simulation and compare
-times = [daysToSeconds(100), daysToSeconds(200), daysToSeconds(300), daysToSeconds(400), daysToSeconds(500)]
+times = [daysToSeconds(1)]#, daysToSeconds(200), daysToSeconds(300), daysToSeconds(400), daysToSeconds(500)]
 
 # Run simulations and store results
 for time in times:
     simulator_3d.simulateTo(time)
     pressures_3d.append(simulator_3d.pressure.copy())
     saturation_3d.append(simulator_3d.saturation.copy())
-    simulator_refined_3d.simulateTo(time)
-    pressures_refined_3d.append(simulator_refined_3d.pressure.copy())
-    saturation_refined_3d.append(simulator_refined_3d.saturation.copy())
+    # simulator_refined_3d.simulateTo(time)
+    # pressures_refined_3d.append(simulator_refined_3d.pressure.copy())
+    # saturation_refined_3d.append(simulator_refined_3d.saturation.copy())
 
 # Cell lengths for each dimension in 3D
 cell_lengths_x_3d = np.linspace(0, grid_length_3d[0], grid_shape_3d[0])
@@ -288,7 +258,13 @@ cell_lengths_y_3d = np.linspace(0, grid_length_3d[1], grid_shape_3d[1])
 cell_lengths_z_3d = np.linspace(0, grid_length_3d[2], grid_shape_3d[2])
 
 # Plotting saturation in 3D
-sat = pressures_3d[-1]
+pres = pressures_3d[-1]
+print(pres)
+sat = saturation_3d[-1]
+print(sat)
+plt.imshow(pres[0, :, :])
+plt.show()
+
 plt.imshow(sat[0, :, :])
 plt.show()
 
